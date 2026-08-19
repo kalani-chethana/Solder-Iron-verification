@@ -9,6 +9,8 @@ import {
 
 const MAX_CODE_LENGTH = 255;
 
+// Scanner input is normalized here as well as on the ESP32. Server-side
+// validation is still required because any client can call these endpoints.
 function normalizedCode(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const code = value.trim().toUpperCase();
@@ -89,6 +91,7 @@ export async function saveValidation(req: Request, res: Response, next: NextFunc
       res.status(400).json({ success: false, message: "unit must be C or F" });
       return;
     }
+    // Only active database records may be linked to a new measurement.
     if (!(await userAndIronExist(userId, ironId))) {
       res.status(404).json({ success: false, message: "Active user or soldering iron not found" });
       return;

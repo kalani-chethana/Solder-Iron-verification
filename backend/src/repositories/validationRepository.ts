@@ -1,6 +1,7 @@
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { pool } from "../db";
 
+// RowDataPacket extensions describe the exact column shape returned by MySQL.
 export interface UserRow extends RowDataPacket {
   system_id: number;
   user_code: string;
@@ -27,6 +28,8 @@ export interface ValidationRow extends RowDataPacket {
 }
 
 export async function findUserByCode(code: string): Promise<UserRow | null> {
+  // The placeholder (?) keeps scanner data separate from SQL and prevents SQL
+  // injection. The same approach is used by every write/read with parameters.
   const [rows] = await pool.execute<UserRow[]>(
     `SELECT system_id, user_code, user_name
        FROM users
@@ -49,6 +52,7 @@ export async function findIronByCode(code: string): Promise<IronRow | null> {
 }
 
 export async function userAndIronExist(userId: number, ironId: number): Promise<boolean> {
+  // Check both foreign-key targets in one database round trip.
   const [rows] = await pool.execute<RowDataPacket[]>(
     `SELECT
        EXISTS(SELECT 1 FROM users WHERE system_id = ? AND is_active = TRUE) AS user_exists,
@@ -73,6 +77,7 @@ export async function insertValidation(
 }
 
 export async function findValidations(): Promise<ValidationRow[]> {
+  // JOINs turn stored numeric IDs into a useful history response for clients.
   const [rows] = await pool.query<ValidationRow[]>(
     `SELECT v.system_id AS validation_id,
             u.system_id AS user_id, u.user_code, u.user_name,

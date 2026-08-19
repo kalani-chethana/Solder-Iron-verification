@@ -7,11 +7,15 @@ import apiRoutes from "./routes";
 const app = express();
 const port = Number(process.env.PORT ?? 5000);
 
+// Common middleware is registered before the API routes so every endpoint can
+// accept cross-origin clients and automatically parse small JSON request bodies.
 app.disable("x-powered-by");
 app.use(cors());
 app.use(express.json({ limit: "16kb" }));
 app.use("/api", apiRoutes);
 
+// These handlers must come after the routes. Express reaches them only when no
+// endpoint matched, or when a controller passes an error to next(error).
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ success: false, message: "Endpoint not found" });
 });
@@ -31,6 +35,7 @@ async function start(): Promise<void> {
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
     throw new Error("PORT must be a valid TCP port");
   }
+  // Do not accept ESP32 requests until MySQL is reachable.
   await verifyDatabaseConnection();
   app.listen(port, "0.0.0.0", () => {
     console.log(`API listening on http://0.0.0.0:${port}/api`);

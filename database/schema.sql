@@ -4,6 +4,8 @@ CREATE DATABASE IF NOT EXISTS soldering_iron_validation
 
 USE soldering_iron_validation;
 
+-- People authorized to use the validation station. user_code is the value
+-- printed in (or at the end of a URL inside) the user's QR code.
 CREATE TABLE IF NOT EXISTS users (
   system_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   user_code VARCHAR(255) NOT NULL,
@@ -15,6 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
   UNIQUE KEY uq_users_user_code (user_code)
 ) ENGINE=InnoDB;
 
+-- Registered equipment. iron_code is scanned after a user logs in.
 CREATE TABLE IF NOT EXISTS solder_irons (
   system_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   iron_code VARCHAR(255) NOT NULL,
@@ -26,6 +29,8 @@ CREATE TABLE IF NOT EXISTS solder_irons (
   UNIQUE KEY uq_solder_irons_iron_code (iron_code)
 ) ENGINE=InnoDB;
 
+-- One immutable measurement per completed validation. Foreign keys guarantee
+-- that every saved reading belongs to a known user and soldering iron.
 CREATE TABLE IF NOT EXISTS validation_records (
   system_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   user_id INT UNSIGNED NOT NULL,

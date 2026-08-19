@@ -9,6 +9,8 @@ function integerEnv(name: string, fallback: number): number {
   return value;
 }
 
+// A pool reuses database connections across requests. Every setting can be
+// supplied in a .env file; the defaults are suitable for a local MySQL install.
 export const pool = mysql.createPool({
   host: process.env.DB_HOST ?? "127.0.0.1",
   port: integerEnv("DB_PORT", 3306),
@@ -22,6 +24,7 @@ export const pool = mysql.createPool({
 });
 
 export async function verifyDatabaseConnection(): Promise<void> {
+  // Borrow one connection for a startup health check, then always return it.
   const connection = await pool.getConnection();
   try {
     await connection.ping();
