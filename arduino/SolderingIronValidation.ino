@@ -103,26 +103,6 @@ static uint32_t lastWifiIconUpdateMs = 0;
 
 static constexpr uint32_t WIFI_ICON_UPDATE_MS = 500;
 
-// =====================================================
-// OLED Wi-Fi icon
-// =====================================================
-//
-// The icon is drawn manually because the SH1106 cannot directly
-// display a PNG/JPG image.
-//
-// Location:
-//     top-right corner
-//
-// Connected:
-//     normal Wi-Fi symbol
-//
-// Connecting:
-//     Wi-Fi symbol with small blinking dot
-//
-// Disconnected:
-//     small X
-//
-// =====================================================
 
 void drawWifiIcon() {
 
@@ -134,76 +114,51 @@ void drawWifiIcon() {
      WiFi.status() == WL_IDLE_STATUS ||
      WiFi.status() == WL_DISCONNECTED);
 
-  // Icon position
-  const int cx = 113;
-  const int topY = 6;
+  // Very small Wi-Fi icon
+  const int cx = 116;
+  const int topY = 5;
 
   if (connected) {
 
-    // -------------------------------------------------
-    // Connected Wi-Fi symbol
-    // -------------------------------------------------
-
     // Top arc
-    u8g2.drawLine(cx - 12, topY + 4, cx - 9, topY + 2);
-    u8g2.drawLine(cx - 9, topY + 2, cx - 5, topY + 1);
-    u8g2.drawLine(cx - 5, topY + 1, cx, topY);
-    u8g2.drawLine(cx, topY, cx + 5, topY + 1);
-    u8g2.drawLine(cx + 5, topY + 1, cx + 9, topY + 2);
-    u8g2.drawLine(cx + 9, topY + 2, cx + 12, topY + 4);
+    u8g2.drawLine(cx - 5, topY + 2, cx - 3, topY + 1);
+    u8g2.drawLine(cx - 3, topY + 1, cx, topY);
+    u8g2.drawLine(cx, topY, cx + 3, topY + 1);
+    u8g2.drawLine(cx + 3, topY + 1, cx + 5, topY + 2);
 
     // Middle arc
-    u8g2.drawLine(cx - 8, topY + 8, cx - 5, topY + 6);
-    u8g2.drawLine(cx - 5, topY + 6, cx - 2, topY + 5);
-    u8g2.drawLine(cx - 2, topY + 5, cx + 2, topY + 5);
-    u8g2.drawLine(cx + 2, topY + 5, cx + 5, topY + 6);
-    u8g2.drawLine(cx + 5, topY + 6, cx + 8, topY + 8);
-
-    // Bottom arc
-    u8g2.drawLine(cx - 4, topY + 12, cx - 2, topY + 10);
-    u8g2.drawLine(cx - 2, topY + 10, cx + 2, topY + 10);
-    u8g2.drawLine(cx + 2, topY + 10, cx + 4, topY + 12);
+    u8g2.drawLine(cx - 3, topY + 5, cx - 1, topY + 4);
+    u8g2.drawLine(cx - 1, topY + 4, cx + 1, topY + 4);
+    u8g2.drawLine(cx + 1, topY + 4, cx + 3, topY + 5);
 
     // Center dot
-    u8g2.drawDisc(cx, topY + 15, 2);
+    u8g2.drawDisc(cx, topY + 7, 1);
 
   } else if (connecting) {
 
-    // -------------------------------------------------
-    // Connecting symbol
-    // -------------------------------------------------
+    // Small connecting Wi-Fi
+    u8g2.drawLine(cx - 5, topY + 2, cx - 3, topY + 1);
+    u8g2.drawLine(cx - 3, topY + 1, cx, topY);
+    u8g2.drawLine(cx, topY, cx + 3, topY + 1);
+    u8g2.drawLine(cx + 3, topY + 1, cx + 5, topY + 2);
 
-    u8g2.drawLine(cx - 10, topY + 5, cx - 7, topY + 3);
-    u8g2.drawLine(cx - 7, topY + 3, cx - 3, topY + 2);
-    u8g2.drawLine(cx - 3, topY + 2, cx, topY + 1);
-    u8g2.drawLine(cx, topY + 1, cx + 4, topY + 2);
-    u8g2.drawLine(cx + 4, topY + 2, cx + 8, topY + 4);
-    u8g2.drawLine(cx + 8, topY + 4, cx + 10, topY + 5);
-
-    u8g2.drawLine(cx - 6, topY + 9, cx - 3, topY + 7);
-    u8g2.drawLine(cx - 3, topY + 7, cx, topY + 6);
-    u8g2.drawLine(cx, topY + 6, cx + 3, topY + 7);
-    u8g2.drawLine(cx + 3, topY + 7, cx + 6, topY + 9);
+    u8g2.drawLine(cx - 3, topY + 5, cx, topY + 4);
+    u8g2.drawLine(cx, topY + 4, cx + 3, topY + 5);
 
     // Blinking dot
     if ((millis() / 500) % 2 == 0) {
-      u8g2.drawDisc(cx, topY + 14, 2);
+      u8g2.drawDisc(cx, topY + 7, 1);
     } else {
-      u8g2.drawCircle(cx, topY + 14, 2);
+      u8g2.drawCircle(cx, topY + 7, 1);
     }
 
   } else {
 
-    // -------------------------------------------------
-    // Disconnected X
-    // -------------------------------------------------
-
-    u8g2.drawLine(cx - 6, topY + 5, cx + 6, topY + 15);
-    u8g2.drawLine(cx + 6, topY + 5, cx - 6, topY + 15);
-
+    // Small disconnected X
+    u8g2.drawLine(cx - 3, topY + 2, cx + 3, topY + 7);
+    u8g2.drawLine(cx + 3, topY + 2, cx - 3, topY + 7);
   }
 }
-
 // =====================================================
 // OLED functions
 // =====================================================
@@ -222,11 +177,6 @@ void showTwoLines(const String &line1, const String &line2) {
   }
 
   u8g2.clearBuffer();
-
-  // Header
-  u8g2.setFont(u8g2_font_5x8_tf);
-
-  u8g2.drawStr(3, 8, "ESP32");
 
   // Wi-Fi icon in top-right corner
   drawWifiIcon();
@@ -267,11 +217,6 @@ void showTemperatureOnOLED(float temperature) {
 
   u8g2.clearBuffer();
 
-  // Header
-  u8g2.setFont(u8g2_font_5x8_tf);
-
-  u8g2.drawStr(3, 8, "TEMP");
-
   // Wi-Fi icon
   drawWifiIcon();
 
@@ -309,7 +254,7 @@ void refreshCurrentOLED() {
 
     case WAITING_FOR_IRON:
       showTwoLines(
-        currentUserName,
+        currentUserCode,
         "Scan Iron"
       );
       break;
@@ -398,7 +343,7 @@ void showScanUserScreen() {
 void showScanIronScreen() {
 
   showTwoLines(
-    currentUserName,
+    currentUserCode,
     "Scan Iron"
   );
 }
@@ -824,7 +769,8 @@ void logoutCurrentUser() {
     "Scan User"
   );
 
-  delay(1200);
+  // Increased from 1500 ms to 2000 ms
+  delay(2000);
 
   showScanUserScreen();
 }
@@ -939,10 +885,11 @@ void processScannedCode(
 
       showTwoLines(
         "User Changed",
-        currentUserName
+        currentUserCode
       );
 
-      delay(1500);
+      // Increased from 1500 ms to 2000 ms
+      delay(2000);
 
       currentState =
         WAITING_FOR_IRON;
@@ -991,7 +938,8 @@ void processScannedCode(
         "Scan Again"
       );
 
-      delay(1500);
+      // Increased from 1500 ms to 2000 ms
+      delay(2000);
 
       showScanUserScreen();
 
@@ -1024,10 +972,11 @@ void processScannedCode(
 
     showTwoLines(
       "Welcome",
-      currentUserName
+      currentUserCode
     );
 
-    delay(1500);
+    // Increased from 1500 ms to 2000 ms
+    delay(2000);
 
     currentState =
       WAITING_FOR_IRON;
@@ -1066,7 +1015,8 @@ void processScannedCode(
         "Scan Again"
       );
 
-      delay(1500);
+      // Increased from 1500 ms to 2000 ms
+      delay(2000);
 
       showScanIronScreen();
 
@@ -1321,14 +1271,16 @@ void completeSuccessfulSave() {
     pendingTemperature
   );
 
-  delay(1500);
+  // Increased from 1500 ms to 2000 ms
+  delay(2000);
 
   showTwoLines(
     "SUCCESS",
     "Saved to DB"
   );
 
-  delay(1500);
+  // Increased from 1500 ms to 2000 ms
+  delay(2000);
 
   pendingSave = false;
   pendingTemperature = 0.0f;

@@ -1,17 +1,21 @@
 import { ResultSetHeader, RowDataPacket } from "mysql2";
-import { pool } from "../db";
+import { pool, tsfsPool } from "../db";
 
 // RowDataPacket extensions describe the exact column shape returned by MySQL.
 export interface UserRow extends RowDataPacket {
   system_id: number;
   user_code: string;
   user_name: string;
+  department?: string | null;
+  designation?: string | null;
 }
 
 export interface IronRow extends RowDataPacket {
   system_id: number;
   iron_code: string;
   iron_name: string;
+  serial_number: string | null;
+  use_department: string | null;
 }
 
 export interface ValidationRow extends RowDataPacket {
@@ -22,44 +26,88 @@ export interface ValidationRow extends RowDataPacket {
   iron_id: number;
   iron_code: string;
   iron_name: string;
+  serial_number: string | null;
+  use_department: string | null;
   temperature: number;
   unit: string;
   created_at: Date;
 }
 
 export async function findUserByCode(code: string): Promise<UserRow | null> {
-  // The placeholder (?) keeps scanner data separate from SQL and prevents SQL
-  // injection. The same approach is used by every write/read with parameters.
-  const [rows] = await pool.execute<UserRow[]>(
-    `SELECT system_id, user_code, user_name
-       FROM users
-      WHERE user_code = ? AND is_active = TRUE
+  // Query tblemployee in TSFS. Matches either exact EmpNo (e.g. "0004") or zero-padded ("4" -> "0004").
+  // Strictly requires IsDelete = 0 for active accounts.
+  const [rows] = await tsfsPool.execute<UserRow[]>(
+    `SELECT sysID AS system_id,
+            EmpNo AS user_code,
+            InitialWithName AS user_name,
+            Department AS department,
+            Designation AS designation
+       FROM tblemployee
+      WHERE (EmpNo = ? OR EmpNo = LPAD(?, 4, '0'))
+        AND IsDelete = 0
       LIMIT 1`,
-    [code],
+    [code, code],
   );
   return rows[0] ?? null;
+}
+
+export async function findAllUsers(): Promise<UserRow[]> {
+  const [rows] = await tsfsPool.query<UserRow[]>(
+    `SELECT sysID AS system_id,
+            EmpNo AS user_code,
+            InitialWithName AS user_name,
+            Department AS department,
+            Designation AS designation
+       FROM tblemployee
+      WHERE IsDelete = 0
+      ORDER BY EmpNo ASC`,
+  );
+  return rows;
 }
 
 export async function findIronByCode(code: string): Promise<IronRow | null> {
-  const [rows] = await pool.execute<IronRow[]>(
-    `SELECT system_id, iron_code, iron_name
-       FROM solder_irons
-      WHERE iron_code = ? AND is_active = TRUE
+  const [rows] = await tsfsPool.execute<IronRow[]>(
+    `SELECT t.SysID AS system_id,
+            t.ItemNumber AS iron_code,
+            t.ItemName AS iron_name,
+            t.SerialNumber AS serial_number,
+            t.UseDepartment AS use_department
+       FROM tblsheduledserviceitems t
+      WHERE t.ItemNumber = ? AND t.CategotyID = '55' AND t.InstrumentStatus = 1
       LIMIT 1`,
     [code],
   );
   return rows[0] ?? null;
 }
 
-export async function userAndIronExist(userId: number, ironId: number): Promise<boolean> {
-  // Check both foreign-key targets in one database round trip.
-  const [rows] = await pool.execute<RowDataPacket[]>(
-    `SELECT
-       EXISTS(SELECT 1 FROM users WHERE system_id = ? AND is_active = TRUE) AS user_exists,
-       EXISTS(SELECT 1 FROM solder_irons WHERE system_id = ? AND is_active = TRUE) AS iron_exists`,
-    [userId, ironId],
+export async function findAllIrons(): Promise<IronRow[]> {
+  const [rows] = await tsfsPool.query<IronRow[]>(
+    `SELECT t.SysID AS system_id,
+            t.ItemNumber AS iron_code,
+            t.ItemName AS iron_name,
+            t.SerialNumber AS serial_number,
+            t.UseDepartment AS use_department
+       FROM tblsheduledserviceitems t
+      WHERE t.CategotyID = '55' AND t.InstrumentStatus = 1
+      ORDER BY t.ItemNumber ASC`,
   );
-  return Boolean(rows[0]?.user_exists) && Boolean(rows[0]?.iron_exists);
+  return rows;
+}
+
+export async function userAndIronExist(userId: number, ironId: number): Promise<boolean> {
+  // Query tsfsPool concurrently for both user and equipment records.
+  // Enforces IsDelete = 0 for the employee and InstrumentStatus = 1 for the iron.
+  const [userResult, ironResult] = await Promise.all([
+    tsfsPool.execute<RowDataPacket[]>(
+      `SELECT 1 FROM tblemployee WHERE sysID = ? AND IsDelete = 0 LIMIT 1`,
+      [userId],
+    ),
+    tsfsPool.execute<RowDataPacket[]>(
+      `SELECT 1 FROM tblsheduledserviceitems WHERE SysID = ? AND CategotyID = '55' AND InstrumentStatus = 1 LIMIT 1`,
+      [ironId],
+    ),
+  ]);
+  return userResult[0].length > 0 && ironResult[0].length > 0;
 }
 
 export async function insertValidation(
@@ -77,16 +125,74 @@ export async function insertValidation(
 }
 
 export async function findValidations(): Promise<ValidationRow[]> {
-  // JOINs turn stored numeric IDs into a useful history response for clients.
-  const [rows] = await pool.query<ValidationRow[]>(
+  // Fetch validation history from the application database.
+  const [records] = await pool.query<RowDataPacket[]>(
     `SELECT v.system_id AS validation_id,
-            u.system_id AS user_id, u.user_code, u.user_name,
-            i.system_id AS iron_id, i.iron_code, i.iron_name,
+            v.user_id,
+            v.iron_id,
             v.temperature, v.unit, v.created_at
        FROM validation_records v
-       JOIN users u ON u.system_id = v.user_id
-       JOIN solder_irons i ON i.system_id = v.iron_id
       ORDER BY v.created_at DESC, v.system_id DESC`,
   );
-  return rows;
+
+  if (records.length === 0) {
+    return [];
+  }
+
+  // Fetch corresponding employee and equipment details from the TSFS database.
+  const distinctUserIds = Array.from(
+    new Set(records.map((r) => Number(r.user_id)).filter((id) => id > 0)),
+  );
+  const distinctIronIds = Array.from(
+    new Set(records.map((r) => Number(r.iron_id)).filter((id) => id > 0)),
+  );
+
+  const [usersResult, ironsResult] = await Promise.all([
+    distinctUserIds.length > 0
+      ? tsfsPool.query<UserRow[]>(
+          `SELECT sysID AS system_id,
+                  EmpNo AS user_code,
+                  InitialWithName AS user_name,
+                  Department AS department,
+                  Designation AS designation
+             FROM tblemployee
+            WHERE sysID IN (?)`,
+          [distinctUserIds],
+        )
+      : Promise.resolve([[]]),
+    distinctIronIds.length > 0
+      ? tsfsPool.query<IronRow[]>(
+          `SELECT SysID AS system_id,
+                  ItemNumber AS iron_code,
+                  ItemName AS iron_name,
+                  SerialNumber AS serial_number,
+                  UseDepartment AS use_department
+             FROM tblsheduledserviceitems
+            WHERE SysID IN (?)`,
+          [distinctIronIds],
+        )
+      : Promise.resolve([[]]),
+  ]);
+
+  const userMap = new Map((usersResult[0] as UserRow[]).map((item) => [item.system_id, item]));
+  const ironMap = new Map((ironsResult[0] as IronRow[]).map((item) => [item.system_id, item]));
+
+  return records.map((r) => {
+    const user = userMap.get(Number(r.user_id));
+    const iron = ironMap.get(Number(r.iron_id));
+    return {
+      validation_id: Number(r.validation_id),
+      user_id: Number(r.user_id),
+      user_code: user?.user_code ?? "UNKNOWN",
+      user_name: user?.user_name ?? "Unknown User",
+      iron_id: Number(r.iron_id),
+      iron_code: iron?.iron_code ?? "UNKNOWN",
+      iron_name: iron?.iron_name ?? "Unknown Iron",
+      serial_number: iron?.serial_number ?? null,
+      use_department: iron?.use_department ?? null,
+      temperature: Number(r.temperature),
+      unit: String(r.unit),
+      created_at: r.created_at as Date,
+    } as ValidationRow;
+  });
 }

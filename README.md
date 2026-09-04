@@ -45,11 +45,11 @@ Before uploading, update `WIFI_SSID`, `WIFI_PASSWORD`, and `BACKEND_BASE_URL` ne
 
 Run `database/schema.sql` in MySQL. It creates:
 
-- `users` — authorized people and their QR values.
-- `solder_irons` — registered irons and their barcode values.
-- `validation_records` — saved measurements linked to both tables.
+- `validation_records` — saved measurements linked to employees and soldering irons.
 
-The script inserts `USER001` and `IRON001` as examples. Replace or extend these values with the exact values produced by your QR codes and barcodes. Codes are compared in uppercase, and inactive users or irons are rejected.
+Both users and equipment are read directly from the **`tsfs`** database:
+- **Operators / Users**: `tsfs.tblemployee` (active where `IsDelete = 0`). The scanned user code matches the employee number **`EmpNo`** (e.g. `0004`, `0006`, `0022`), displaying `InitialWithName` on the station OLED.
+- **Soldering Irons**: `tsfs.tblsheduledserviceitems` (active where `CategotyID = '55'` and `InstrumentStatus = 1`). The scanned iron barcode matches **`ItemNumber`** (e.g. `WIR-SI-001-CC` or `CAL-SI-001-CC`).
 
 ## Backend setup
 

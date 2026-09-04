@@ -1,5 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import {
+  findAllIrons,
+  findAllUsers,
   findIronByCode,
   findUserByCode,
   findValidations,
@@ -40,7 +42,10 @@ export async function checkUser(req: Request, res: Response, next: NextFunction)
       valid: true,
       user_id: user.system_id,
       user_code: user.user_code,
-      user_name: user.user_name,
+      user_name: user.user_code,
+      full_name: user.user_name,
+      department: user.department ?? null,
+      designation: user.designation ?? null,
     });
   } catch (error) {
     next(error);
@@ -66,6 +71,8 @@ export async function checkIron(req: Request, res: Response, next: NextFunction)
       iron_id: iron.system_id,
       iron_code: iron.iron_code,
       iron_name: iron.iron_name,
+      serial_number: iron.serial_number,
+      use_department: iron.use_department,
     });
   } catch (error) {
     next(error);
@@ -107,6 +114,24 @@ export async function saveValidation(req: Request, res: Response, next: NextFunc
 export async function getValidations(_req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     res.json({ success: true, validations: await findValidations() });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getIrons(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const irons = await findAllIrons();
+    res.json({ success: true, count: irons.length, irons });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getUsers(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const users = await findAllUsers();
+    res.json({ success: true, count: users.length, users });
   } catch (error) {
     next(error);
   }

@@ -9,8 +9,7 @@ function integerEnv(name: string, fallback: number): number {
   return value;
 }
 
-// A pool reuses database connections across requests. Every setting can be
-// supplied in a .env file; the defaults are suitable for a local MySQL install.
+// Application database pool (users and validation_records).
 export const pool = mysql.createPool({
   host: process.env.DB_HOST ?? "127.0.0.1",
   port: integerEnv("DB_PORT", 3306),
@@ -23,12 +22,30 @@ export const pool = mysql.createPool({
   decimalNumbers: true,
 });
 
+// TSFS database pool (tblsheduledserviceitems).
+export const tsfsPool = mysql.createPool({
+  host: process.env.TSFS_DB_HOST ?? process.env.DB_HOST ?? "127.0.0.1",
+  port: integerEnv("TSFS_DB_PORT", integerEnv("DB_PORT", 3306)),
+  user: process.env.TSFS_DB_USER ?? process.env.DB_USER ?? "root",
+  password: process.env.TSFS_DB_PASSWORD ?? process.env.DB_PASSWORD ?? "",
+  database: process.env.TSFS_DB_NAME ?? "tsfs",
+  waitForConnections: true,
+  connectionLimit: integerEnv("TSFS_DB_CONNECTION_LIMIT", 10),
+  charset: "utf8mb4",
+  decimalNumbers: true,
+});
+
 export async function verifyDatabaseConnection(): Promise<void> {
-  // Borrow one connection for a startup health check, then always return it.
-  const connection = await pool.getConnection();
+  // Borrow a connection from both pools for startup health check.
+  const [appConn, tsfsConn] = await Promise.all([
+    pool.getConnection(),
+    tsfsPool.getConnection(),
+  ]);
+
   try {
-    await connection.ping();
+    await Promise.all([appConn.ping(), tsfsConn.ping()]);
   } finally {
-    connection.release();
+    appConn.release();
+    tsfsConn.release();
   }
 }
