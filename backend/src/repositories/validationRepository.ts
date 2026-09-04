@@ -10,12 +10,34 @@ export interface UserRow extends RowDataPacket {
   designation?: string | null;
 }
 
+export interface ProfileRow extends RowDataPacket {
+  profile_id: number;
+  profile_name: string;
+  department: string | null;
+  target_temp: number;
+  tolerance: number;
+  min_temp: number;
+  max_temp: number;
+  unit: string;
+  is_active: boolean;
+  created_at: Date;
+}
+
 export interface IronRow extends RowDataPacket {
   system_id: number;
   iron_code: string;
   iron_name: string;
   serial_number: string | null;
   use_department: string | null;
+  profile?: {
+    profile_id: number;
+    profile_name: string;
+    target_temp: number;
+    tolerance: number;
+    min_temp: number;
+    max_temp: number;
+    unit: string;
+  } | null;
 }
 
 export interface ValidationRow extends RowDataPacket {
@@ -29,6 +51,10 @@ export interface ValidationRow extends RowDataPacket {
   serial_number: string | null;
   use_department: string | null;
   temperature: number;
+  target_temp: number | null;
+  tolerance: number | null;
+  status: "PASS" | "FAIL";
+  profile_name?: string | null;
   unit: string;
   created_at: Date;
 }
@@ -65,6 +91,56 @@ export async function findAllUsers(): Promise<UserRow[]> {
   return rows;
 }
 
+export async function findAllProfiles(): Promise<ProfileRow[]> {
+  const [rows] = await pool.query<ProfileRow[]>(
+    `SELECT profile_id, profile_name, department, target_temp, tolerance, min_temp, max_temp, unit, is_active, created_at
+       FROM temperature_profiles
+      WHERE is_active = TRUE
+      ORDER BY profile_id ASC`,
+  );
+  return rows;
+}
+
+export async function getProfileForIron(ironId: number, department: string | null): Promise<ProfileRow | null> {
+  // 1. Check explicit mapping in iron_profiles
+  const [mappedRows] = await pool.execute<ProfileRow[]>(
+    `SELECT p.profile_id, p.profile_name, p.department, p.target_temp, p.tolerance, p.min_temp, p.max_temp, p.unit, p.is_active, p.created_at
+       FROM iron_profiles ip
+       JOIN temperature_profiles p ON p.profile_id = ip.profile_id
+      WHERE ip.iron_id = ? AND p.is_active = TRUE
+      LIMIT 1`,
+    [ironId],
+  );
+  if (mappedRows.length > 0 && mappedRows[0]) {
+    return mappedRows[0];
+  }
+
+  // 2. Fallback to matching department
+  if (department) {
+    const [deptRows] = await pool.execute<ProfileRow[]>(
+      `SELECT profile_id, profile_name, department, target_temp, tolerance, min_temp, max_temp, unit, is_active, created_at
+         FROM temperature_profiles
+        WHERE (department = ? OR profile_name LIKE ?) AND is_active = TRUE
+        LIMIT 1`,
+      [department, `${department}%`],
+    );
+    if (deptRows.length > 0 && deptRows[0]) {
+      return deptRows[0];
+    }
+  }
+
+  return null;
+}
+
+export async function assignIronProfile(ironId: number, profileId: number): Promise<void> {
+  await pool.execute(
+    `INSERT INTO iron_profiles (iron_id, profile_id)
+     VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE profile_id = VALUES(profile_id)`,
+    [ironId, profileId],
+  );
+}
+
 export async function findIronByCode(code: string): Promise<IronRow | null> {
   const [rows] = await tsfsPool.execute<IronRow[]>(
     `SELECT t.SysID AS system_id,
@@ -77,7 +153,24 @@ export async function findIronByCode(code: string): Promise<IronRow | null> {
       LIMIT 1`,
     [code],
   );
-  return rows[0] ?? null;
+  const iron = rows[0] ?? null;
+  if (!iron) return null;
+
+  const profile = await getProfileForIron(iron.system_id, iron.use_department);
+  if (profile) {
+    iron.profile = {
+      profile_id: profile.profile_id,
+      profile_name: profile.profile_name,
+      target_temp: Number(profile.target_temp),
+      tolerance: Number(profile.tolerance),
+      min_temp: Number(profile.min_temp),
+      max_temp: Number(profile.max_temp),
+      unit: profile.unit,
+    };
+  } else {
+    iron.profile = null;
+  }
+  return iron;
 }
 
 export async function findAllIrons(): Promise<IronRow[]> {
@@ -115,13 +208,51 @@ export async function insertValidation(
   ironId: number,
   temperature: number,
   unit: "C" | "F",
-): Promise<number> {
-  const [result] = await pool.execute<ResultSetHeader>(
-    `INSERT INTO validation_records (user_id, iron_id, temperature, unit)
-     VALUES (?, ?, ?, ?)`,
-    [userId, ironId, temperature, unit],
+): Promise<{
+  validationId: number;
+  status: "PASS" | "FAIL";
+  targetTemp: number | null;
+  tolerance: number | null;
+  minTemp: number | null;
+  maxTemp: number | null;
+}> {
+  let targetTemp: number | null = null;
+  let tolerance: number | null = null;
+  let minTemp: number | null = null;
+  let maxTemp: number | null = null;
+  let profileId: number | null = null;
+  let status: "PASS" | "FAIL" = "PASS";
+
+  const [ironRows] = await tsfsPool.execute<RowDataPacket[]>(
+    `SELECT UseDepartment FROM tblsheduledserviceitems WHERE SysID = ? LIMIT 1`,
+    [ironId],
   );
-  return result.insertId;
+  const dept = (ironRows[0]?.UseDepartment as string) ?? null;
+  const profile = await getProfileForIron(ironId, dept);
+
+  if (profile) {
+    profileId = profile.profile_id;
+    targetTemp = Number(profile.target_temp);
+    tolerance = Number(profile.tolerance);
+    minTemp = Number(profile.min_temp);
+    maxTemp = Number(profile.max_temp);
+    status = temperature >= minTemp && temperature <= maxTemp ? "PASS" : "FAIL";
+  }
+
+  const [result] = await pool.execute<ResultSetHeader>(
+    `INSERT INTO validation_records (user_id, iron_id, temperature, target_temp, tolerance, unit, status, profile_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [userId, ironId, temperature, targetTemp, tolerance, unit, status, profileId],
+  );
+
+  return {
+    validationId: result.insertId,
+    status,
+    targetTemp,
+    tolerance,
+    minTemp,
+    maxTemp,
+  };
 }
 
 export async function findValidations(): Promise<ValidationRow[]> {
@@ -130,8 +261,16 @@ export async function findValidations(): Promise<ValidationRow[]> {
     `SELECT v.system_id AS validation_id,
             v.user_id,
             v.iron_id,
-            v.temperature, v.unit, v.created_at
+            v.temperature,
+            v.target_temp,
+            v.tolerance,
+            v.status,
+            v.profile_id,
+            p.profile_name,
+            v.unit,
+            v.created_at
        FROM validation_records v
+       LEFT JOIN temperature_profiles p ON p.profile_id = v.profile_id
       ORDER BY v.created_at DESC, v.system_id DESC`,
   );
 
@@ -191,6 +330,10 @@ export async function findValidations(): Promise<ValidationRow[]> {
       serial_number: iron?.serial_number ?? null,
       use_department: iron?.use_department ?? null,
       temperature: Number(r.temperature),
+      target_temp: r.target_temp != null ? Number(r.target_temp) : null,
+      tolerance: r.tolerance != null ? Number(r.tolerance) : null,
+      status: (r.status as "PASS" | "FAIL") ?? "PASS",
+      profile_name: (r.profile_name as string) ?? null,
       unit: String(r.unit),
       created_at: r.created_at as Date,
     } as ValidationRow;

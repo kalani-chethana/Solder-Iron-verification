@@ -3,9 +3,11 @@ import {
   checkIron,
   checkUser,
   getIrons,
+  getProfiles,
   getUsers,
   getValidations,
   saveValidation,
+  setIronProfile,
 } from "../controllers/validationController";
 
 const router = Router();
@@ -17,5 +19,7 @@ router.post("/save-validation", saveValidation);
 router.get("/validations", getValidations);
 router.get("/irons", getIrons);
 router.get("/users", getUsers);
+router.get("/profiles", getProfiles);
+router.post("/irons/assign-profile", setIronProfile);
 
 export default router;

@@ -1,6 +1,8 @@
 import { NextFunction, Request, Response } from "express";
 import {
+  assignIronProfile,
   findAllIrons,
+  findAllProfiles,
   findAllUsers,
   findIronByCode,
   findUserByCode,
@@ -73,6 +75,7 @@ export async function checkIron(req: Request, res: Response, next: NextFunction)
       iron_name: iron.iron_name,
       serial_number: iron.serial_number,
       use_department: iron.use_department,
+      profile: iron.profile ?? null,
     });
   } catch (error) {
     next(error);
@@ -104,8 +107,17 @@ export async function saveValidation(req: Request, res: Response, next: NextFunc
       return;
     }
 
-    const validationId = await insertValidation(userId, ironId, temperature, unit);
-    res.status(201).json({ success: true, validation_id: validationId });
+    const result = await insertValidation(userId, ironId, temperature, unit);
+    res.status(201).json({
+      success: true,
+      validation_id: result.validationId,
+      status: result.status,
+      temperature,
+      target_temp: result.targetTemp,
+      tolerance: result.tolerance,
+      min_temp: result.minTemp,
+      max_temp: result.maxTemp,
+    });
   } catch (error) {
     next(error);
   }
@@ -132,6 +144,30 @@ export async function getUsers(_req: Request, res: Response, next: NextFunction)
   try {
     const users = await findAllUsers();
     res.json({ success: true, count: users.length, users });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getProfiles(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const profiles = await findAllProfiles();
+    res.json({ success: true, count: profiles.length, profiles });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function setIronProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const ironId = positiveInteger(req.body?.iron_id);
+    const profileId = positiveInteger(req.body?.profile_id);
+    if (!ironId || !profileId) {
+      res.status(400).json({ success: false, message: "Valid iron_id and profile_id are required" });
+      return;
+    }
+    await assignIronProfile(ironId, profileId);
+    res.json({ success: true, message: "Profile assigned to iron successfully" });
   } catch (error) {
     next(error);
   }

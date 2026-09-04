@@ -76,6 +76,7 @@ String currentIronName = "";
 // Pending validation is retained when saving fails.
 float pendingTemperature = 0.0f;
 bool pendingSave = false;
+String lastValidationStatus = "PASS";
 uint32_t lastSaveRetryMs = 0;
 static constexpr uint32_t SAVE_RETRY_INTERVAL_MS = 5000;
 
@@ -676,9 +677,16 @@ bool saveValidationToDatabase(
     return false;
   }
 
-  return
+  if (
     httpStatus == 201 &&
-    (responseDocument["success"] | false);
+    (responseDocument["success"] | false)
+  ) {
+    lastValidationStatus =
+      String((const char *)(responseDocument["status"] | "PASS"));
+    return true;
+  }
+
+  return false;
 }
 
 // =====================================================
@@ -1274,10 +1282,17 @@ void completeSuccessfulSave() {
   // Increased from 1500 ms to 2000 ms
   delay(2000);
 
-  showTwoLines(
-    "SUCCESS",
-    "Saved to DB"
-  );
+  if (lastValidationStatus == "PASS") {
+    showTwoLines(
+      "PASS",
+      "Saved to DB"
+    );
+  } else {
+    showTwoLines(
+      "FAIL (OUT OF RNG)",
+      "Saved to DB"
+    );
+  }
 
   // Increased from 1500 ms to 2000 ms
   delay(2000);
